@@ -51,6 +51,18 @@ Prerequisites: Node.js and npm.
    npm run build
    ```
 
+   On Windows PowerShell, use the `.cmd` entry point if `npm` is blocked by
+   the script execution policy:
+
+   ```powershell
+   npm.cmd ci
+   npm.cmd run build
+   ```
+
+   `npm.cmd` runs npm without invoking the blocked `npm.ps1` script. `ci`
+   installs the exact dependency versions from `package-lock.json` for a fresh
+   checkout, and `run build` runs Vite to generate the extension in `dist/`.
+
 3. Open Chrome and navigate to:
 
    ```text

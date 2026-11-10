@@ -26,6 +26,7 @@ LunaTOC helps you navigate long conversations by automatically turning your prom
 - Preview full prompt content on hover
 - View the full conversation title from the sidebar title tooltip
 - Automatically updates when new prompts are sent
+- Adds submitted prompts to the TOC before the AI answer finishes streaming
 - Resizable sidebar
 - Pinnable sidebar with optional hover-based auto-hide
 - Choose whether the sidebar starts pinned open or collapsed in Settings

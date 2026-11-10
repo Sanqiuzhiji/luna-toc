@@ -116,6 +116,39 @@ describe('navigatorController lifecycle and coordination', () => {
     expect(list.children[0].textContent).toContain('Hello World');
   });
 
+  it('adds a newly mounted user message once across DOM and page-hook capture', async () => {
+    const thread = document.createElement('div');
+    thread.className = 'thread-scroll-container';
+    document.body.append(thread);
+    navigatorController.init();
+    navigatorController.attach();
+
+    const prompt = document.createElement('div');
+    prompt.setAttribute('data-chatgpt-search-unit-key', 'turn:user');
+    prompt.setAttribute('data-chatgpt-search-message-ids', 'dom-live-prompt');
+    prompt.textContent = 'New live prompt';
+    thread.append(prompt);
+    await vi.waitFor(() => {
+      expect(document.querySelectorAll('#navigator-list .navigator-item')).toHaveLength(1);
+    });
+
+    const platform = getActivePlatform();
+    window.dispatchEvent(new MessageEvent('message', {
+      source: window,
+      data: {
+        type: platform.pageHook.messages.newUserMessage,
+        routeKey: 'test-conv',
+        payload: {
+          id: 'dom-live-prompt',
+          author: { role: 'user' },
+          content: { parts: ['New live prompt'] },
+          createTime: Date.now() / 1000,
+        },
+      },
+    }));
+    expect(document.querySelectorAll('#navigator-list .navigator-item')).toHaveLength(1);
+  });
+
   it('ignores stale conversationData intended for a different route', () => {
     const platform = getActivePlatform();
     Object.defineProperty(window, 'location', {

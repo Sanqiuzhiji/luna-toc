@@ -14,7 +14,10 @@ import { getCurrentRouteKey } from './routing';
 import { getFetchMethod } from '@/pageHook/fetchHelpers';
 import type { ContentRequestMeta } from '../platformInterface';
 
-const SEND_MESSAGE_PATH = '/backend-api/f/conversation';
+const SEND_MESSAGE_PATHS = new Set([
+  '/backend-api/f/conversation',
+  '/backend-api/conversation',
+]);
 const NEW_CHAT_PREFIX = 'new-chat:';
 const NEW_CHAT_WEB_PREFIX = 'WEB:';
 
@@ -43,7 +46,7 @@ export function inspectFetchRequest(
     return {
       isConversationGet,
       isInitialConversationLoad: conversationId !== null,
-      isSendMessage: method === 'POST' && pathname === SEND_MESSAGE_PATH,
+      isSendMessage: isSendMessagePath(method, pathname),
       routeKey: isConversationGet
         ? effectiveConversationId
         : fallbackRouteKey || getCurrentRouteKey(),
@@ -59,4 +62,9 @@ export function isNewChatRouteKey(routeKey: string): boolean {
     routeKey.startsWith(NEW_CHAT_WEB_PREFIX) ||
     routeKey.startsWith('local-')
   );
+}
+
+/** Recognizes the supported ChatGPT conversation submission paths. */
+export function isSendMessagePath(method: string, pathname: string): boolean {
+  return method === 'POST' && SEND_MESSAGE_PATHS.has(pathname);
 }

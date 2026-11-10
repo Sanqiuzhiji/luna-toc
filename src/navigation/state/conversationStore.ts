@@ -208,7 +208,15 @@ export function createConversationStore(
       unconfirmedPromptIds.set(targetConversationKey, pendingIds);
     }
     pendingIds.add(normalizedMessage.id);
-    conversationMessages.push(createNavigatorMessage(normalizedMessage));
+    const navigatorMessage = createNavigatorMessage(normalizedMessage);
+    const nextIndex = conversationMessages.findIndex(
+      (message) => message.createTime > navigatorMessage.createTime
+    );
+    if (nextIndex === -1) {
+      conversationMessages.push(navigatorMessage);
+    } else {
+      conversationMessages.splice(nextIndex, 0, navigatorMessage);
+    }
     cacheConversationMessages(targetConversationKey);
     return true;
   }

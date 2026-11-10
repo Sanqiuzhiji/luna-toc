@@ -25,6 +25,7 @@ import {
 import {
   inspectFetchRequest,
   isNewChatRouteKey,
+  isSendMessagePath,
 } from './contentCapture';
 import {
   findRenderedChatGptPrompt,
@@ -51,6 +52,7 @@ import {
   observeVisibleUserMessages as observeChatGptVisibleUserMessages,
   getJumpTargetElement as getChatGptJumpTargetElement,
 } from './nativePromptNavigation';
+import { observeNewUserMessages } from './newUserMessageObserver';
 import { getResolvedTheme, observeTheme } from './theme';
 import {
   CHATGPT_CONTRACT_TABLE,
@@ -95,9 +97,7 @@ export const chatGptPlatform: Platform = {
     request: {
       fullConversationIdFromPath: getConversationIdFromApiPath,
       paginatedConversationIdFromPath: getConversationMessagesIdFromApiPath,
-      isSendMessagePath(method, pathname) {
-        return method === 'POST' && pathname === '/backend-api/f/conversation';
-      },
+      isSendMessagePath,
     },
     fetch: {
       getFetchUrl,
@@ -130,6 +130,7 @@ export const chatGptPlatform: Platform = {
     nativePromptButtonSelectors: getNativePromptButtonSelectors(),
     getNativePromptIndex,
     observeVisibleUserMessages: observeChatGptVisibleUserMessages,
+    observeNewUserMessages,
     getJumpTargetElement: getChatGptJumpTargetElement,
     settleAttempts: APP_CONFIG.platforms.chatgpt.settleAttempts,
     promptTopOffsetPx: APP_CONFIG.platforms.chatgpt.promptTopOffsetPx,

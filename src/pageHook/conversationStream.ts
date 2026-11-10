@@ -27,35 +27,41 @@ interface OutgoingRequestBody {
  * Attempts to parse the outgoing POST request body to immediately capture
  * the user's prompt before the server responds.
  */
-export function extractOutgoingMessage(
+export async function extractOutgoingMessage(
   args: FetchArgs,
   routeKey: string,
   messageType: string = NEW_USER_MESSAGE_TYPE
-): void {
+): Promise<void> {
   try {
-    const init = args[1] || {};
-    if (typeof init.body === 'string') {
-      const data = JSON.parse(init.body) as OutgoingRequestBody;
-      const messages = data.messages || [];
-      const userMessage = messages.find((m) => m.author?.role === 'user');
+    const [input, init] = args;
+    const body = typeof init?.body === 'string'
+      ? init.body
+      : init?.body == null && input instanceof Request
+        ? await input.clone().text()
+        : null;
+    if (!body) return;
 
-      if (userMessage) {
-        window.postMessage(
-          {
-            type: messageType,
-            routeKey,
-            payload: {
-              id: userMessage.id,
-              author: { role: 'user' },
-              content: userMessage.content,
-              metadata: userMessage.metadata,
-              createTime: userMessage.create_time || Date.now(),
-            },
-          },
-          '*'
-        );
-      }
-    }
+    const data = JSON.parse(body) as OutgoingRequestBody;
+    if (!Array.isArray(data.messages)) return;
+    const userMessage = [...data.messages].reverse().find(
+      (message) => message?.author?.role === 'user' && typeof message.id === 'string'
+    );
+    if (!userMessage) return;
+
+    window.postMessage(
+      {
+        type: messageType,
+        routeKey,
+        payload: {
+          id: userMessage.id,
+          author: { role: 'user' },
+          content: userMessage.content,
+          metadata: userMessage.metadata,
+          createTime: userMessage.create_time ?? Date.now() / 1000,
+        },
+      },
+      '*'
+    );
   } catch {}
 }
 
@@ -125,6 +131,7 @@ function processStreamLine(
 
     if (data.type === 'input_message') {
       const message = data.input_message;
+      if (!message || typeof message.id !== 'string') return;
 
       window.postMessage(
         {
@@ -135,7 +142,7 @@ function processStreamLine(
             author: { role: 'user' },
             content: message.content,
             metadata: message.metadata,
-            createTime: message.create_time || Date.now(),
+            createTime: message.create_time ?? Date.now() / 1000,
           },
         },
         '*'

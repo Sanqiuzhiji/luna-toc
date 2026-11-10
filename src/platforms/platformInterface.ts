@@ -16,6 +16,7 @@
  * matchMedia) stays in `src/pageHook/`; only platform-specific dispatch
  * points use this interface.
  */
+import type { ChatMessage } from '@/features/conversationPrompts/message';
 
 /**
  * Literal platform id. Add new members as adapters are added.
@@ -204,6 +205,8 @@ export interface PlatformNavigationAdapter {
   getNativePromptIndex(button: HTMLButtonElement): number;
   /** Hook for the loading-settle fallback timer. */
   observeVisibleUserMessages(callback: (id: string) => void): () => void;
+  /** Reports newly mounted user messages and returns an observer cleanup. */
+  observeNewUserMessages?(callback: (message: ChatMessage) => void): () => void;
   /** Element-visibility predicate used to settle after a jump. */
   getJumpTargetElement(message: NavigatorMessage): HTMLElement | null;
   /** Per-platform numeric tuning values. */

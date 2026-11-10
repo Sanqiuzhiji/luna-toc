@@ -110,11 +110,11 @@ import { installVirtualLayoutBridge } from './virtualLayoutBridge';
 
     try {
       if (requestMeta?.isSendMessage) {
-        extractOutgoingMessage(
+        void extractOutgoingMessage(
           args,
           requestMeta.routeKey,
           platform.pageHook.messages.newUserMessage
-        );
+        ).catch(() => {});
       }
     } catch {}
 

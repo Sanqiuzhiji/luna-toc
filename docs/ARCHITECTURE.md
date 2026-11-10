@@ -329,6 +329,8 @@ text.
 
 Data flows from the page's Hook script to the content script using window messages. Channel names are platform-namespaced — every adapter exposes its own set through `Platform.messages`, so two adapters can never collide. ChatGPT currently publishes:
 
+For live prompts, the MAIN-world Fetch hook reads a string `init.body` or a cloned `Request` body and forwards the latest outgoing user message immediately. SSE `input_message` events provide another network source. The ChatGPT content adapter also observes newly mounted user-message nodes inside the thread scroll container when they have a stable message ID and text. All three sources enter `navigatorController.handleLiveUserMessage`, then `ConversationStore` deduplicates by ID and the TOC renderer updates. The DOM observer disconnects on controller detach and rebinds on route changes.
+
 - `CHATGPT_CONVERSATION_DATA`: Sends the full JSON conversation tree on page load or full conversation update.
 - `CHATGPT_NEW_USER_MESSAGE`: Streams newly submitted user prompts in real-time.
 - `CHATGPT_ROUTE_CHANGED`: Dispatched instantly when a routing URL transition takes place.

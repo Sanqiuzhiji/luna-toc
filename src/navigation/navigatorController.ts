@@ -77,6 +77,7 @@ export const navigatorController = (() => {
   let onSavePrompt: (message: NavigatorMessage) => void = () => {};
   let onTitleChanged = () => {};
   let unsubscribeNavigationState: (() => void) | null = null;
+  let disconnectNewUserMessages: (() => void) | null = null;
 
   /**
    * Returns the route key shared with prompt marking and page-hook messages.
@@ -338,6 +339,7 @@ export const navigatorController = (() => {
     });
 
     initActivePromptTracking();
+    connectNewUserObserver();
     isAttached = true;
     const currentRouteKey = getCurrentConversationKey();
     const isInitialNewChat =
@@ -363,7 +365,17 @@ export const navigatorController = (() => {
       unsubscribeNavigationState = null;
     }
     activePromptTracker.disconnect();
+    disconnectNewUserMessages?.();
+    disconnectNewUserMessages = null;
     isAttached = false;
+  }
+
+  /** Rebinds DOM capture to the current conversation's thread. */
+  function connectNewUserObserver(): void {
+    disconnectNewUserMessages?.();
+    disconnectNewUserMessages = getActivePlatform().navigation.observeNewUserMessages?.(
+      (message) => handleLiveUserMessage(message, getCurrentConversationKey())
+    ) ?? null;
   }
 
   /**
@@ -600,6 +612,8 @@ export const navigatorController = (() => {
       preserveMessages: transition.shouldPreserveMessages,
     });
 
+    if (isAttached) connectNewUserObserver();
+
     flushPendingNewChatMessage();
   }
 
@@ -626,6 +640,20 @@ export const navigatorController = (() => {
       data,
       getCurrentConversationKey()
     );
+    render({ refreshObservers: true });
+  }
+
+  /** Merges a live prompt from either page-hook capture or the DOM fallback. */
+  function handleLiveUserMessage(newMessage: ChatMessage, routeKey?: string): void {
+    if (!newMessage?.id) return;
+    syncRouteState();
+    const result = conversationStore.handleNewUserMessage(newMessage, routeKey);
+    if (!result.accepted || result.isBackground) return;
+
+    if (result.didAppend) onPromptAdded();
+    if (isLoadingPrompts() && !isBackfillActive()) {
+      markLoadingComplete({ isComplete: false });
+    }
     render({ refreshObservers: true });
   }
 
@@ -667,25 +695,7 @@ export const navigatorController = (() => {
         event.data?.type ===
         getActivePlatform().pageHook.messages.newUserMessage
       ) {
-        const newMessage = event.data.payload as ChatMessage;
-        if (!newMessage?.id) return;
-
-        const routeKey = event.data.routeKey;
-        const result = conversationStore.handleNewUserMessage(
-          newMessage,
-          routeKey
-        );
-
-        if (!result.accepted || result.isBackground) return;
-
-        if (result.didAppend) {
-          onPromptAdded();
-        }
-
-        if (isLoadingPrompts() && !isBackfillActive()) {
-          markLoadingComplete({ isComplete: false });
-        }
-        render({ refreshObservers: true });
+        handleLiveUserMessage(event.data.payload as ChatMessage, event.data.routeKey);
       }
 
       if (

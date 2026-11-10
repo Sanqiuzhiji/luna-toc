@@ -96,6 +96,21 @@ describe('conversationStore', () => {
     expect(store.getMessages()).toHaveLength(1);
   });
 
+  it('keeps prompt order when live messages arrive out of order', () => {
+    const store = createConversationStore({ getCurrentRouteKey: () => 'conv-123' });
+    const prompt = (id: string, createTime: number): ChatMessage => ({
+      id, author: { role: 'user' }, content: { parts: [id] }, createTime,
+    });
+
+    expect(store.handleNewUserMessage(prompt('second', 200)).didAppend).toBe(true);
+    expect(store.handleNewUserMessage(prompt('first', 100)).didAppend).toBe(true);
+    expect(store.handleNewUserMessage(prompt('third', 300)).didAppend).toBe(true);
+    expect(store.handleNewUserMessage(prompt('second', 200)).didAppend).toBe(false);
+    expect(store.getMessages().map((message) => message.id)).toEqual([
+      'first', 'second', 'third',
+    ]);
+  });
+
   it('preserves messages and copies snapshots when migrating from new-chat to permanent route', () => {
     let currentKey = 'new-chat:/';
     const store = createConversationStore({

@@ -750,6 +750,15 @@ function prompt(id: string, time: number, role = 'user'): ChatMessage {
   return { id, author: { role }, content: { parts: [id] }, create_time: time };
 }
 
+/** Builds a live outgoing prompt with the branch parent captured from the request. */
+function outgoingPrompt(
+  id: string,
+  time: number,
+  parentMessageId: string
+): ChatMessage {
+  return { ...prompt(id, time), parentMessageId };
+}
+
 describe('issue 5 live snapshot reconciliation', () => {
   it('preserves three known prompts on a background duplicate, late inserts, and an old GET', () => {
     let route = 'A';
@@ -815,4 +824,81 @@ it('preserves separate live turns on a foreground old GET without assistant plac
   store.handleNewUserMessage(prompt('3', 300), 'A');
   store.handleConversationData(initial);
   expect(store.getMessages().map((m) => m.id)).toEqual(['1', '2', '3']);
+});
+
+describe('edited live prompt reconciliation', () => {
+  it('replaces a stopped prompt with its edited sibling and blocks stale revival', () => {
+    const store = createConversationStore({ getCurrentRouteKey: () => 'A' });
+    const original = outgoingPrompt('original', 100, 'shared-parent');
+    const edited = outgoingPrompt('edited', 300, 'shared-parent');
+
+    expect(store.handleNewUserMessage(original, 'A').didAppend).toBe(true);
+    store.handleConversationData({
+      messages: [original, prompt('stopped-reply', 200, 'assistant')],
+    });
+    expect(store.getMessages().map((message) => message.id)).toEqual([
+      'original',
+    ]);
+
+    expect(store.handleNewUserMessage(edited, 'A').didAppend).toBe(true);
+    expect(store.getMessages().map((message) => message.id)).toEqual(['edited']);
+
+    expect(
+      store.handleNewUserMessage(prompt('original', 100), 'A')
+    ).toMatchObject({
+      accepted: false,
+      didAppend: false,
+    });
+    store.handleConversationData({
+      messages: [original, prompt('stopped-reply', 200, 'assistant')],
+    });
+    expect(store.getMessages().map((message) => message.id)).toEqual(['edited']);
+  });
+
+  it('preserves rapid live prompts that have different parents', () => {
+    const store = createConversationStore({ getCurrentRouteKey: () => 'A' });
+
+    store.handleNewUserMessage(outgoingPrompt('first', 100, 'parent-1'), 'A');
+    store.handleNewUserMessage(outgoingPrompt('second', 200, 'parent-2'), 'A');
+
+    expect(store.getMessages().map((message) => message.id)).toEqual([
+      'first',
+      'second',
+    ]);
+  });
+
+  it('moves branch replacement state through temporary route promotion', () => {
+    let route = 'new-chat:/';
+    const store = createConversationStore({ getCurrentRouteKey: () => route });
+    store.syncRouteState();
+
+    store.handleNewUserMessage(
+      outgoingPrompt('original', 100, 'shared-parent'),
+      route
+    );
+    store.handleNewUserMessage(
+      outgoingPrompt('edited', 200, 'shared-parent'),
+      route
+    );
+
+    for (const nextRoute of ['local-new', 'permanent']) {
+      route = nextRoute;
+      const transition = store.syncRouteState();
+      store.resetForCurrentRoute({
+        preserveMessages: transition.shouldPreserveMessages,
+        nextMessages: transition.cachedMessages,
+      });
+    }
+
+    expect(store.handleNewUserMessage(prompt('original', 100))).toMatchObject({
+      accepted: false,
+      didAppend: false,
+    });
+    store.handleNewUserMessage(
+      outgoingPrompt('final-edit', 300, 'shared-parent')
+    );
+    expect(store.getMessages().map((message) => message.id)).toEqual([
+      'final-edit',
+    ]);
+  });
 });

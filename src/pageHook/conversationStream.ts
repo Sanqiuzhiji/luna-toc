@@ -21,6 +21,7 @@ interface OutgoingMessage {
 
 interface OutgoingRequestBody {
   messages?: OutgoingMessage[];
+  parent_message_id?: string;
 }
 
 /**
@@ -58,6 +59,10 @@ export async function extractOutgoingMessage(
           content: userMessage.content,
           metadata: userMessage.metadata,
           createTime: userMessage.create_time ?? Date.now() / 1000,
+          parentMessageId:
+            typeof data.parent_message_id === 'string'
+              ? data.parent_message_id
+              : undefined,
         },
       },
       '*'

@@ -25,6 +25,7 @@ describe('conversationStream payload author role', () => {
 
   it('includes author: { role: "user" } and createTime in extractOutgoingMessage payload', async () => {
     const outgoingBody = {
+      parent_message_id: 'assistant-parent',
       messages: [
         {
           id: 'user-msg-outgoing',
@@ -56,6 +57,7 @@ describe('conversationStream payload author role', () => {
     expect(event.payload.id).toBe('user-msg-outgoing');
     expect(event.payload.author).toEqual({ role: 'user' });
     expect(event.payload.createTime).toBe(1712345678);
+    expect(event.payload.parentMessageId).toBe('assistant-parent');
   });
 
   it('reads the effective Request body and selects the newest user message', async () => {

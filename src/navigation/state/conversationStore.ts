@@ -95,6 +95,10 @@ export function createConversationStore(
   const unconfirmedPromptIds = new Map<string, Set<string>>();
   // GET presence establishes field authority, independently of prompt collapse.
   const confirmedMessageIds = new Map<string, Set<string>>();
+  // Outgoing prompts sharing one parent are edited sibling versions.
+  const livePromptIdsByParent = new Map<string, Map<string, string>>();
+  // Replaced IDs stay blocked so late network or DOM events cannot revive them.
+  const supersededPromptIds = new Map<string, Set<string>>();
   const accumulatedCollapsedMaps = new Map<string, Map<string, string>>();
   let currentConversationKey: string | null = null;
   let pendingNewChatRouteKey: string | null = null;
@@ -168,12 +172,82 @@ export function createConversationStore(
     return navigationSnapshotStore.getSnapshot(conversationKey)?.prompts || [];
   }
 
+  function isSupersededPrompt(
+    conversationKey: string,
+    messageId: string
+  ): boolean {
+    return supersededPromptIds.get(conversationKey)?.has(messageId) ?? false;
+  }
+
+  /** Removes one replaced prompt from every route-scoped state projection. */
+  function supersedePrompt(
+    conversationKey: string,
+    messageId: string
+  ): void {
+    let supersededIds = supersededPromptIds.get(conversationKey);
+    if (!supersededIds) {
+      supersededIds = new Set();
+      supersededPromptIds.set(conversationKey, supersededIds);
+    }
+    supersededIds.add(messageId);
+
+    accumulatedConversationMessages.get(conversationKey)?.delete(messageId);
+    unconfirmedPromptIds.get(conversationKey)?.delete(messageId);
+    confirmedMessageIds.get(conversationKey)?.delete(messageId);
+
+    const collapsedMap = accumulatedCollapsedMaps.get(conversationKey);
+    collapsedMap?.delete(messageId);
+    if (collapsedMap) {
+      for (const [sourceId, targetId] of collapsedMap) {
+        if (targetId === messageId) collapsedMap.delete(sourceId);
+      }
+    }
+
+    const remainingCachedMessages = getCachedConversationMessages(
+      conversationKey
+    ).filter((message) => message.id !== messageId);
+    navigationSnapshotStore.replacePrompts(
+      conversationKey,
+      remainingCachedMessages
+    );
+
+    if (conversationKey === getCurrentConversationKey()) {
+      conversationMessages = conversationMessages.filter(
+        (message) => message.id !== messageId
+      );
+    }
+  }
+
+  /** Replaces an earlier live prompt when a new outgoing prompt has the same parent. */
+  function reconcileLivePromptBranch(
+    conversationKey: string,
+    message: ChatMessage
+  ): void {
+    const parentMessageId = message.parentMessageId;
+    if (!parentMessageId) return;
+
+    let promptIdsByParent = livePromptIdsByParent.get(conversationKey);
+    if (!promptIdsByParent) {
+      promptIdsByParent = new Map();
+      livePromptIdsByParent.set(conversationKey, promptIdsByParent);
+    }
+
+    const previousPromptId = promptIdsByParent.get(parentMessageId);
+    if (previousPromptId && previousPromptId !== message.id) {
+      supersedePrompt(conversationKey, previousPromptId);
+    }
+    promptIdsByParent.set(parentMessageId, message.id);
+  }
+
   /** Appends live-only prompts; GET-confirmed IDs keep their data and collapse status. */
   function appendNavigatorMessage(
     newMessage: ChatMessage,
     routeKey?: string
   ): boolean {
     const targetConversationKey = routeKey || getCurrentConversationKey();
+    if (isSupersededPrompt(targetConversationKey, newMessage.id)) {
+      return false;
+    }
     if (confirmedMessageIds.get(targetConversationKey)?.has(newMessage.id)) {
       return false;
     }
@@ -263,7 +337,10 @@ export function createConversationStore(
       confirmedMessageIds.set(conversationKey, confirmedIds);
     }
     for (const message of incomingMessages) {
-      if (message?.id) {
+      if (
+        message?.id &&
+        !isSupersededPrompt(conversationKey, message.id)
+      ) {
         messageMap.set(message.id, message);
         confirmedIds.add(message.id);
         unconfirmedPromptIds.get(conversationKey)?.delete(message.id);
@@ -303,6 +380,15 @@ export function createConversationStore(
     message: ChatMessage,
     routeKey: string
   ): NewUserMessageResult {
+    if (isSupersededPrompt(routeKey, message.id)) {
+      return {
+        accepted: false,
+        didAppend: false,
+        isMigrating: false,
+        isBackground: true,
+      };
+    }
+    reconcileLivePromptBranch(routeKey, message);
     if (confirmedMessageIds.get(routeKey)?.has(message.id)) {
       return { accepted: false, didAppend: false, isMigrating: false, isBackground: true };
     }
@@ -346,6 +432,15 @@ export function createConversationStore(
       return cacheBackgroundUserMessage(newMessage, routeKey);
     }
 
+    if (isSupersededPrompt(activeRouteKey, newMessage.id)) {
+      return {
+        accepted: false,
+        didAppend: false,
+        isMigrating: isMigratingNewChatMessage,
+        isBackground: false,
+      };
+    }
+    reconcileLivePromptBranch(activeRouteKey, newMessage);
     if (confirmedMessageIds.get(activeRouteKey)?.has(newMessage.id)) {
       return { accepted: false, didAppend: false, isMigrating: isMigratingNewChatMessage, isBackground: false };
     }
@@ -443,6 +538,31 @@ export function createConversationStore(
         unconfirmedPromptIds.get(nextConversationKey)?.delete(id);
       }
 
+      const previousPromptIdsByParent =
+        livePromptIdsByParent.get(previousConversationKey);
+      if (previousPromptIdsByParent) {
+        const nextPromptIdsByParent =
+          livePromptIdsByParent.get(nextConversationKey) ||
+          new Map<string, string>();
+        for (const [parentId, promptId] of previousPromptIdsByParent) {
+          nextPromptIdsByParent.set(parentId, promptId);
+        }
+        livePromptIdsByParent.set(nextConversationKey, nextPromptIdsByParent);
+      }
+      livePromptIdsByParent.delete(previousConversationKey);
+
+      const previousSupersededIds =
+        supersededPromptIds.get(previousConversationKey);
+      if (previousSupersededIds) {
+        const nextSupersededIds =
+          supersededPromptIds.get(nextConversationKey) || new Set<string>();
+        for (const id of previousSupersededIds) {
+          nextSupersededIds.add(id);
+        }
+        supersededPromptIds.set(nextConversationKey, nextSupersededIds);
+      }
+      supersededPromptIds.delete(previousConversationKey);
+
       const previousCollapsed =
         accumulatedCollapsedMaps.get(previousConversationKey);
       if (previousCollapsed && previousCollapsed.size > 0) {
@@ -514,6 +634,8 @@ export function createConversationStore(
     accumulatedConversationMessages.clear();
     unconfirmedPromptIds.clear();
     confirmedMessageIds.clear();
+    livePromptIdsByParent.clear();
+    supersededPromptIds.clear();
     accumulatedCollapsedMaps.clear();
     currentConversationKey = null;
     clearPendingNewChat();

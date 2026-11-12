@@ -16,6 +16,8 @@ export interface ChatMessage {
   metadata?: { attachments?: ChatAttachment[] };
   create_time?: number;
   createTime?: number;
+  /** Parent turn from the outgoing request, used to identify edited siblings. */
+  parentMessageId?: string;
 }
 
 export interface ConversationPageInfo {
